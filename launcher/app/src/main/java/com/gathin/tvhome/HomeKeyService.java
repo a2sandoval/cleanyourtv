@@ -3,6 +3,7 @@ package com.gathin.tvhome;
 import android.accessibilityservice.AccessibilityService;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.provider.Settings;
@@ -21,8 +22,10 @@ import java.util.Map;
  * launcher is a protected package, set-home is accepted but ignored, and the remote's plain Home
  * key never reaches key filtering). There onAccessibilityEvent watches for the stock Home window
  * coming to the front and covers it with this launcher — the Launcher Manager trick. The stock
- * screen flashes briefly first; that much is inherent to the technique. Only the stock Home
- * activity itself is covered, so other screens its package hosts stay reachable.
+ * screen flashes briefly first; that much is inherent to the technique. Matching is by
+ * package, not activity: some builds report window class names that differ from the Home
+ * activity's own, and an activity match then silently never fires. Other screens the stock
+ * package hosts are covered too — on Fire TV that package is the stock home and little else.
  *
  * Enable over adb:
  *   settings put secure enabled_accessibility_services com.gathin.tvhome/.HomeKeyService
@@ -53,13 +56,23 @@ public class HomeKeyService extends AccessibilityService {
         stockHome = resolveStockHome();
     }
 
-    /** The current default Home activity, unless it is this launcher's own. */
+    /** The stock Home activity: the registered default when there is one, else the system
+     *  Home activity that is not this launcher's (Fire TV registers no default at all). */
     private ComponentName resolveStockHome() {
         Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
         ResolveInfo info = getPackageManager().resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY);
-        if (info == null || info.activityInfo == null) return null;
-        ComponentName name = new ComponentName(info.activityInfo.packageName, info.activityInfo.name);
-        return name.getPackageName().equals(getPackageName()) ? null : name;
+        if (info != null && info.activityInfo != null
+                && !info.activityInfo.packageName.equals(getPackageName())
+                && !"android".equals(info.activityInfo.packageName)) {
+            return new ComponentName(info.activityInfo.packageName, info.activityInfo.name);
+        }
+        for (ResolveInfo candidate : getPackageManager().queryIntentActivities(home, 0)) {
+            if (candidate.activityInfo == null) continue;
+            if (candidate.activityInfo.packageName.equals(getPackageName())) continue;
+            if ((candidate.activityInfo.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0) continue;
+            return new ComponentName(candidate.activityInfo.packageName, candidate.activityInfo.name);
+        }
+        return null;
     }
 
     private boolean isSettingsKey(KeyEvent event) {
@@ -102,8 +115,6 @@ public class HomeKeyService extends AccessibilityService {
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         CharSequence pkg = event.getPackageName();
         if (pkg == null || !stockHome.getPackageName().contentEquals(pkg)) return;
-        CharSequence cls = event.getClassName();
-        if (cls == null || !stockHome.getClassName().contentEquals(cls)) return;
         long now = System.currentTimeMillis();
         if (now - lastCoverMs < 1500) return;   // one cover per arrival, not per event in the burst
         lastCoverMs = now;
