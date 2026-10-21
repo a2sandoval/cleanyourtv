@@ -1,0 +1,87 @@
+# Hisense 75QD65NF Fire TV (AFTHA004, codename hazel), Fire OS 7 / Android 9 (SDK 28),
+# build PS7717.5741N.0036408028416 -- probed from the set itself on 2026-10-21, and the
+# package list below was checked against `pm list packages` from the same set.
+#
+# FIRE OS: DEBLOAT ONLY. Fire OS will not let a third-party launcher take over Home
+# (see examples/toshiba-fire-tv-aftha004, the same platform and build line): this list
+# trims Amazon's ads, telemetry, promos and the apps this owner does not use, around
+# the stock home screen.
+#
+# Apps the owner keeps (never in this list): WireGuard, Settings, Netflix, Prime Video
+# (built into Fire OS; no separate package), Internet/Silk (com.amazon.cloud9), Disney+,
+# Hulu, Peacock, Max (com.hbo.hbonow), Paramount+ (com.cbs.ott), Surfshark, File Explorer
+# (visnkmr.apps.filexplorer), Downloader (com.esaba.downloader).
+# Kept on purpose, as in the source list: AirPlay (com.apple.airplay.amazon.airplay),
+# the Miracast receiver (com.amazon.cast.sink), DIAL/whisperplay casting, Alexa and its
+# Ivona TTS voice, OTA updates, the Appstore (com.amazon.venezia), the stock launcher,
+# and the file plumbing the kept apps rely on (DocumentsUI, external storage, providers).
+#
+# Apply:   TV_HOST=<tv ip> tools/disable.sh examples/hisense-75qd65nf/debloat.txt
+# Undo:    TV_HOST=<tv ip> tools/restore.sh examples/hisense-75qd65nf/debloat.txt com.amazon.tv.launcher
+# Everything is DISABLED, not uninstalled. Comment out any line you want to keep.
+
+# Ads, shopping, content recognition
+com.amazon.shoptv.client
+com.amazon.shoptv.firetv.client
+com.amazon.tv.acr
+com.amazon.tv.democontent.provider
+com.amazon.sneakpeek
+com.amazon.hybridadidservice
+
+# Telemetry and metrics
+com.amazon.tv.fw.metrics
+com.amazon.neo.minerva
+com.amazon.neo.minerva.logcat
+com.amazon.neodelegate
+com.amazon.wirelessmetrics.service
+com.amazon.perfcollection
+com.amazon.perfc
+com.amazon.dp.logger
+
+# Tutorials and promos
+com.amazon.storm.lightning.tutorial
+com.amazon.tmm.tutorial
+com.amazon.gamehub
+
+# Amazon content apps the owner does not use
+com.amazon.bueller.music
+com.amazon.bueller.photos
+com.amazon.minitv.android.app
+com.amazon.naatyam
+
+# Streaming apps not on the owner's keep list (YouTube included, at the owner's
+# direction; the DIAL receiver stays, so other casting is unaffected)
+com.amazon.firetv.youtube
+com.amazon.firetv.youtube.tv
+com.tubitv.ott
+tv.pluto.android
+com.crunchyroll.crunchyroid
+com.roku.web.trc
+
+# Further plumbing a TV never uses, approved by the owner with the rest of the
+# list: leftover test stubs, print and NFC plumbing, log uploaders, and stubs
+# for services not kept.
+com.android.nfc
+com.android.cts.ctsshim
+com.android.cts.priv.ctsshim
+com.android.internal.display.cutout.emulation.corner
+com.android.internal.display.cutout.emulation.double
+com.android.internal.display.cutout.emulation.tall
+com.android.printspooler
+com.android.bips
+com.android.htmlviewer
+com.android.wallpapercropper
+com.amazon.logan
+com.amazon.device.logmanager
+com.amazon.media.recommendations
+com.amazon.tv.fss
+com.amazon.tv.localgallery
+com.amazon.tv.oobe
+com.amazon.spotify.mediabrowserservice
+com.amazon.wha.mediabrowserservice
+com.amazon.dummy.settings
+com.amazon.dummy.contacts
+com.amazon.dummy.calendar
+com.amazon.dummy.gallery
+com.amazon.dummy.music
+com.amazon.dummy.alarmclock
