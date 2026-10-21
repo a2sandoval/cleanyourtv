@@ -109,6 +109,13 @@ public class HomeKeyService extends AccessibilityService {
             if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) RemoteKeys.launch(this, app);
             return true;
         }
+        if (event.getKeyCode() == KeyEvent.KEYCODE_HOME) {
+            // Builds that pass Home itself through key filtering (most Fire OS builds are
+            // believed not to, which is what the window watcher below is for): swallow the
+            // key and go home ourselves, so the stock launcher never starts at all.
+            if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) coverHome();
+            return true;
+        }
         if (event.getKeyCode() != KeyEvent.KEYCODE_ALL_APPS) return false;
         if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
             Intent home = new Intent(Intent.ACTION_MAIN)
