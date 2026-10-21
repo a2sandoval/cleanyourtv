@@ -15,11 +15,14 @@ import android.view.View;
 import java.util.Random;
 
 /**
- * Aurora borealis backdrop for the Clock screensaver: three translucent curtains
- * whose top edges sway on slow sine waves, over a fixed star field. Deliberately
- * cheap -- no bitmaps, no blur, no per-frame allocation: the gradients are built
- * once per size change, the Path is reused, redraws are capped at ~25 fps, and
- * the animation only runs while the dream is on screen.
+ * Aurora borealis backdrop, used by the Clock screensaver and as a Home wallpaper
+ * choice: three translucent curtains whose top edges sway on slow sine waves, over
+ * a fixed star field. Deliberately cheap -- no bitmaps, no blur, no per-frame
+ * allocation: the gradients are built once per size change, the Path is reused,
+ * redraws are capped at ~25 fps, and the animation only runs while visible.
+ * The screensaver wears the classic greens; Home mode (setHomeMode) wears the
+ * launcher's own Sky dusk colours -- indigo purples into orange-red -- and moves
+ * slower and smaller, so it stays a backdrop behind the grid.
  */
 public class AuroraView extends View {
 
@@ -27,6 +30,9 @@ public class AuroraView extends View {
     /** Curtain colours (green, teal, violet); index 0 is drawn in front. */
     private static final int[] CURTAIN_RGB = {0x2FE08A, 0x00BFA6, 0x7A4FE0};
     private static final float[] CURTAIN_ALPHA = {0.34f, 0.26f, 0.20f};
+    /** Home colours, from Sky's dawn/dusk stops; index 0 is drawn in front. */
+    private static final int[] HOME_RGB = {0xE2704A, 0xA54A5C, 0x5C3A63};
+    private static final float[] HOME_ALPHA = {0.20f, 0.24f, 0.28f};
     private static final int STAR_COUNT = 70;
     private static final int STEPS = 24;
 
@@ -41,6 +47,7 @@ public class AuroraView extends View {
     private float[] starA;
     private long startMs;
     private boolean running;
+    private boolean homeMode;
 
     private final Runnable frame = new Runnable() {
         @Override
@@ -53,6 +60,13 @@ public class AuroraView extends View {
 
     public AuroraView(Context context, AttributeSet attrs) {
         super(context, attrs);
+    }
+
+    /** Home wallpaper mode: Sky dusk colours, slower and smaller sway. */
+    public void setHomeMode() {
+        homeMode = true;
+        buildGradients();
+        invalidate();
     }
 
     public void start() {
@@ -77,15 +91,7 @@ public class AuroraView extends View {
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
         if (w == 0 || h == 0) return;
-        gradients = new LinearGradient[CURTAIN_RGB.length];
-        for (int i = 0; i < CURTAIN_RGB.length; i++) {
-            int topAlpha = (int) (CURTAIN_ALPHA[i] * 255);
-            gradients[i] = new LinearGradient(0, 0, 0, h * 0.85f,
-                    new int[]{(topAlpha << 24) | CURTAIN_RGB[i],
-                            ((topAlpha / 3) << 24) | CURTAIN_RGB[i],
-                            CURTAIN_RGB[i] & 0x00FFFFFF},
-                    new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP);
-        }
+        buildGradients();
         float density = getResources().getDisplayMetrics().density;
         Random random = new Random(20270820L);
         starX = new float[STAR_COUNT];
@@ -97,6 +103,23 @@ public class AuroraView extends View {
             starY[i] = h * 0.7f * random.nextFloat();
             starR[i] = (0.8f + random.nextFloat() * 1.4f) * density * 0.5f;
             starA[i] = 0.25f + random.nextFloat() * 0.55f;
+        }
+    }
+
+    private void buildGradients() {
+        int w = getWidth();
+        int h = getHeight();
+        if (w == 0 || h == 0) return;
+        int[] rgb = homeMode ? HOME_RGB : CURTAIN_RGB;
+        float[] alpha = homeMode ? HOME_ALPHA : CURTAIN_ALPHA;
+        gradients = new LinearGradient[rgb.length];
+        for (int i = 0; i < rgb.length; i++) {
+            int topAlpha = (int) (alpha[i] * 255);
+            gradients[i] = new LinearGradient(0, 0, 0, h * 0.85f,
+                    new int[]{(topAlpha << 24) | rgb[i],
+                            ((topAlpha / 3) << 24) | rgb[i],
+                            rgb[i] & 0x00FFFFFF},
+                    new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP);
         }
     }
 
@@ -113,7 +136,7 @@ public class AuroraView extends View {
             }
         }
         float t = running ? (SystemClock.uptimeMillis() - startMs) / 1000f : 0f;
-        for (int i = CURTAIN_RGB.length - 1; i >= 0; i--) {
+        for (int i = gradients.length - 1; i >= 0; i--) {
             drawCurtain(canvas, w, h, i, t);
         }
     }
@@ -121,8 +144,10 @@ public class AuroraView extends View {
     private void drawCurtain(Canvas canvas, int w, int h, int i, float t) {
         float baseY = h * (0.04f + 0.10f * i);
         float depth = h * (0.55f + 0.08f * i);
-        float amp1 = h * 0.045f;
-        float amp2 = h * 0.028f;
+        float amp1 = h * (homeMode ? 0.030f : 0.045f);
+        float amp2 = h * (homeMode ? 0.020f : 0.028f);
+        float speed1 = homeMode ? 0.05f : 0.10f;
+        float speed2 = homeMode ? 0.032f : 0.063f;
         double phase = i * 1.7;
         float k1 = (float) (2 * Math.PI * 2.0 / w);
         float k2 = (float) (2 * Math.PI * 3.7 / w);
@@ -132,8 +157,8 @@ public class AuroraView extends View {
         for (int s = 0; s <= STEPS; s++) {
             float x = x0 + (x1 - x0) * s / STEPS;
             float y = baseY
-                    + (float) Math.sin(x * k1 + t * 0.10 + phase) * amp1
-                    + (float) Math.sin(x * k2 - t * 0.063 + phase * 1.3) * amp2;
+                    + (float) Math.sin(x * k1 + t * speed1 + phase) * amp1
+                    + (float) Math.sin(x * k2 - t * speed2 + phase * 1.3) * amp2;
             if (s == 0) {
                 path.moveTo(x, y);
             } else {

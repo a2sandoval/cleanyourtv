@@ -111,6 +111,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private RecyclerView grid;
     private FrameLayout root;
     private WallpaperPlayer wallpaperPlayer;
+    private AuroraView homeAurora;
+    private boolean auroraHome;
     private GlassView glass;
     private View ambient;
     private TextView heroName;
@@ -315,6 +317,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         wallpaperPlayer = new WallpaperPlayer(this, root, cfg);
         sky = findViewById(R.id.sky);
         sky.setIntensity(cfg.skyIntensity);
+        homeAurora = findViewById(R.id.homeAurora);
+        auroraHome = cfg.auroraHome;
+        if (auroraHome) {
+            homeAurora.setHomeMode();
+            homeAurora.setVisibility(View.VISIBLE);
+        }
         glass = findViewById(R.id.glass);
         if (festive) glass.setAccent(festival.accentColor());
         ambient = findViewById(R.id.ambient);
@@ -623,6 +631,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (showStats) startStats();
         sky.update();
         wallpaperPlayer.start();
+        if (homeAurora != null && auroraHome && animations && !reducedMotion) homeAurora.start();
         handler.postDelayed(minuteTick, MINUTE_MS);
         if (festive && diya != null) {
             diya.start();
@@ -725,6 +734,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         super.onPause();
         endReorder();   // Home or another app while reordering keeps the order so far
         wallpaperPlayer.stop();
+        if (homeAurora != null) homeAurora.stop();
         stopAmbientAnimation();
         hero.animate().cancel();
         ambient.animate().cancel();
