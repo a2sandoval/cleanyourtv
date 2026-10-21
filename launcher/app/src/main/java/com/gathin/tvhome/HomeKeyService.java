@@ -1,7 +1,10 @@
 package com.gathin.tvhome;
 
 import android.accessibilityservice.AccessibilityService;
+import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.provider.Settings;
 import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
@@ -13,6 +16,13 @@ import java.util.Map;
  * Sends the remote's Home button to this launcher on remotes that emit KEYCODE_ALL_APPS for Home
  * (Xiaomi sticks and boxes). Android TV 9 routes that key only to the system-image launcher, so once
  * the stock launcher is disabled the button does nothing. Every other key passes through untouched.
+ *
+ * The same service also covers builds that will not hand Home over at all (Fire TV: the stock
+ * launcher is a protected package, set-home is accepted but ignored, and the remote's plain Home
+ * key never reaches key filtering). There onAccessibilityEvent watches for the stock Home window
+ * coming to the front and covers it with this launcher — the Launcher Manager trick. The stock
+ * screen flashes briefly first; that much is inherent to the technique. Only the stock Home
+ * activity itself is covered, so other screens its package hosts stay reachable.
  *
  * Enable over adb:
  *   settings put secure enabled_accessibility_services com.gathin.tvhome/.HomeKeyService
@@ -26,6 +36,10 @@ public class HomeKeyService extends AccessibilityService {
     private boolean settingsPanel;
     /** app_keys, the same map InputKeyService reads, for setups that run only this service. */
     private Map<Integer, String> appKeys = Collections.emptyMap();
+    /** The stock launcher's Home activity, resolved at connect time for the cover watcher below.
+     *  Null when this launcher already owns Home, or when no other Home activity resolves. */
+    private ComponentName stockHome;
+    private long lastCoverMs;
 
     @Override
     protected void onServiceConnected() {
@@ -36,6 +50,16 @@ public class HomeKeyService extends AccessibilityService {
         settingsKeycodes = config.settingsKeycodes;
         settingsPanel = config.settingsKeyPanel;
         appKeys = RemoteKeys.parseAppKeys(config.appKeys);
+        stockHome = resolveStockHome();
+    }
+
+    /** The current default Home activity, unless it is this launcher's own. */
+    private ComponentName resolveStockHome() {
+        Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+        ResolveInfo info = getPackageManager().resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY);
+        if (info == null || info.activityInfo == null) return null;
+        ComponentName name = new ComponentName(info.activityInfo.packageName, info.activityInfo.name);
+        return name.getPackageName().equals(getPackageName()) ? null : name;
     }
 
     private boolean isSettingsKey(KeyEvent event) {
@@ -74,6 +98,20 @@ public class HomeKeyService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (stockHome == null) return;
+        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
+        CharSequence pkg = event.getPackageName();
+        if (pkg == null || !stockHome.getPackageName().contentEquals(pkg)) return;
+        CharSequence cls = event.getClassName();
+        if (cls == null || !stockHome.getClassName().contentEquals(cls)) return;
+        long now = System.currentTimeMillis();
+        if (now - lastCoverMs < 1500) return;   // one cover per arrival, not per event in the burst
+        lastCoverMs = now;
+        Intent home = new Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_HOME)
+                .setPackage(getPackageName())
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+        startActivity(home);
     }
 
     @Override
