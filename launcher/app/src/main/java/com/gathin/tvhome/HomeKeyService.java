@@ -6,6 +6,8 @@ import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
@@ -26,6 +28,9 @@ import java.util.Map;
  * package, not activity: some builds report window class names that differ from the Home
  * activity's own, and an activity match then silently never fires. Other screens the stock
  * package hosts are covered too — on Fire TV that package is the stock home and little else.
+ * The cover is also a race: the Home key press queues the stock activity itself, and that
+ * start can land after ours and stay on top. So each cover schedules one confirmation pass
+ * a moment later, which covers again only if the stock window is still the latest one seen.
  *
  * Enable over adb:
  *   settings put secure enabled_accessibility_services com.gathin.tvhome/.HomeKeyService
@@ -43,6 +48,12 @@ public class HomeKeyService extends AccessibilityService {
      *  Null when this launcher already owns Home, or when no other Home activity resolves. */
     private ComponentName stockHome;
     private long lastCoverMs;
+    /** Package of the most recent window seen, ours included: the confirmation pass reads it. */
+    private String lastWindowPackage;
+    private final Handler coverHandler = new Handler(Looper.getMainLooper());
+    private final Runnable confirmCover = () -> {
+        if (stockHome != null && stockHome.getPackageName().equals(lastWindowPackage)) coverHome();
+    };
 
     @Override
     protected void onServiceConnected() {
@@ -109,20 +120,29 @@ public class HomeKeyService extends AccessibilityService {
         return true;
     }
 
-    @Override
-    public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (stockHome == null) return;
-        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
-        CharSequence pkg = event.getPackageName();
-        if (pkg == null || !stockHome.getPackageName().contentEquals(pkg)) return;
-        long now = System.currentTimeMillis();
-        if (now - lastCoverMs < 1500) return;   // one cover per arrival, not per event in the burst
-        lastCoverMs = now;
+    private void coverHome() {
         Intent home = new Intent(Intent.ACTION_MAIN)
                 .addCategory(Intent.CATEGORY_HOME)
                 .setPackage(getPackageName())
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
         startActivity(home);
+    }
+
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
+        CharSequence pkg = event.getPackageName();
+        if (pkg != null) lastWindowPackage = pkg.toString();
+        if (stockHome == null) return;
+        if (pkg == null || !stockHome.getPackageName().contentEquals(pkg)) return;
+        long now = System.currentTimeMillis();
+        if (now - lastCoverMs < 1500) return;   // one cover per arrival, not per event in the burst
+        lastCoverMs = now;
+        coverHome();
+        // The stock start the key press queued can still land on top of that cover; confirm
+        // once, shortly after, and re-cover only if the stock window is still the latest seen.
+        coverHandler.removeCallbacks(confirmCover);
+        coverHandler.postDelayed(confirmCover, 800);
     }
 
     @Override
